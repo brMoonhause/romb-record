@@ -69,6 +69,7 @@ if __name__=='__main__':
     import os; os.makedirs('stl',exist_ok=True)
     for k,v in allp.items(): export_stl(v,f'stl/{k}.stl',tolerance=0.15,angular_tolerance=0.15)
     print('body V',vol(P['body'])/1e6, flush=True)
-    asm=Compound(label='ROMB_D5_jet200',children=list(allp.values()))
-    for k,ch in zip(allp,asm.children): ch.label=k
-    export_step(asm,'romb_d5_jet200.step')
+    for fn,dd in (('romb_d5_jet200.step',P),('romb_d5_structure.step',S)):
+        asm=Compound(label=fn[:-5],children=list(dd.values()))
+        for k,ch in zip(dd,asm.children): ch.label=k
+        export_step(asm,fn)
