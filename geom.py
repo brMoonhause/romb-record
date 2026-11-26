@@ -58,41 +58,58 @@ def area(P): y,z=P[:,0],P[:,1]; return 0.5*abs(np.dot(y,np.roll(z,1))-np.dot(z,n
 def rr_dims(A,ar,rf=0.45):
     """w,h,r закругленого прямокутника площею A, h/w=ar, r=rf*w"""
     w=np.sqrt(A/(ar-(4-np.pi)*rf*rf)); return w,ar*w,rf*w
-# ---------- повітрозабірник і канал ----------
-W_HL,H_HL,R_HL=rr_dims(A_THROAT*INLET_CR,INLET_AR)
-W_T,H_T,R_T=rr_dims(A_THROAT,INLET_AR)
-Y_INLET_IN=body_le_y(X_INLET)+LIP_T+LIP_GAP          # внутрішня стінка каналу біля губи
-YC0=Y_INLET_IN+W_HL/2
+# ---------- повітрозабірник у товщині крила і канал ----------
+def _lens(x,y0,y1,d,n=72):
+    """переріз крила площиною x між y0 і y1, зміщений усередину на d (d<0 — назовні); старт — зовнішній кінчик, проти год. стрілки"""
+    ys=np.linspace(y0,y1,240); h=np.array([z_top(x,y)-d for y in ys])
+    ok=h>0.3; ys,h=ys[ok],h[ok]
+    top=np.c_[ys[::-1],h[::-1]]; bot=np.c_[ys,-h]
+    P=np.r_[bot,top]                       # від внутр-низу → зовн. кінчик → верх → внутр-верх
+    P=_resample(P,4*n); i=np.argmax(P[:,0]-1e-3*np.abs(P[:,1]))
+    return _resample(np.roll(P,-i,axis=0),n)
+def _inlet_y():
+    """внутрішній край входу підбирається так, щоб площа входу = A_THROAT*INLET_CR"""
+    yout=body_le_y(X_INLET)-INLET_EDGE; lo,hi=0.0,yout-5
+    for _ in range(40):
+        yin=(lo+hi)/2; A=area(_lens(X_INLET,yin+LIP_T,yout,LIP_T))
+        if A<A_THROAT*INLET_CR: hi=yin
+        else: lo=yin
+    return (lo+hi)/2,yout
+Y_INLET_IN,Y_INLET_OUT=_inlet_y()
+MOUTH=_lens(X_INLET,Y_INLET_IN+LIP_T,Y_INLET_OUT,LIP_T)
+YC0=float(np.mean(MOUTH[:,0])); A_MOUTH=area(MOUTH)
+def notch_box():
+    """усе, що перед заокругленням губи в смузі входу, прибирається (виїмка в кромці)"""
+    return (le_x(Y_INLET_IN)-30, X_INLET-LIP_R+2, Y_INLET_IN-1.0, Y_INLET_OUT+40)
+def flare_sections(side=1,n=7):
+    out=[]
+    for u in np.linspace(0,1,n):
+        x=X_INLET-LIP_R*(1-u); d=-1.5+(LIP_T+1.5)*np.sqrt(1-(1-u)**2)
+        P=_lens(x,Y_INLET_IN+d,Y_INLET_OUT+(6 if d<0 else 0),d)   # внутрішня губа теж заокруглена
+        out.append(np.c_[np.full(len(P),x),side*P[:,0],P[:,1]])
+    return out
 def duct_center(x):
     t=smooth((x-X_INLET-L_INLIP)/(X_DUCT2-X_INLET-L_INLIP)); return (1-t)*YC0+t*DUCT_Y_END, t
 def duct_area_at(x):
-    if x<=X_INLET: return A_THROAT*INLET_CR
-    if x<=X_INLET+L_INLIP:                            # еліптична внутрішня губа
+    if x<=X_INLET: return A_MOUTH
+    if x<=X_INLET+L_INLIP:
         u=(x-X_INLET)/L_INLIP; k=1-np.sqrt(1-(1-u)**2)
-        return A_THROAT*(1+(INLET_CR-1)*k)
-    u=(x-X_INLET-L_INLIP)/(X_DUCT2-X_INLET-L_INLIP)     # дифузор: площа росте лінійно
+        return A_THROAT+(A_MOUTH-A_THROAT)*k
+    u=(x-X_INLET-L_INLIP)/(X_DUCT2-X_INLET-L_INLIP)
     return A_THROAT+(A_DUCT_END-A_THROAT)*u
-def duct_shape(x):
-    yc,t=duct_center(x); A=duct_area_at(x); ar=INLET_AR*(1-t)+t*1.0
-    w,h,r=rr_dims(A,ar); return yc,t,w,h,r
+_M0=MOUTH-[YC0,0]
 def duct_section(x,side=1):
-    yc,t,w,h,r=duct_shape(x); P=rrect(w,h,r)+[yc,0]
+    yc,t=duct_center(x); A=duct_area_at(x)
+    w,h,r=rr_dims(A_MOUTH,1.0); C=rrect(w,h,r)
+    P=(1-t)*_M0+t*C; P=P*np.sqrt(A/area(P))+[yc,0]
     return np.c_[np.full(len(P),x),side*P[:,0],P[:,1]]
 def duct_sections(side=1):
-    xs=np.r_[X_INLET-8, np.linspace(X_INLET,X_DUCT2,N_DUCT)]
-    return [duct_section(x,side) for x in xs]
-def cheek_sections(side=1):
-    """зовнішня щока: губа NACA 1-series (товщина LIP_T на довжині LIP_L), далі — стінка каналу"""
-    out=[]
-    for x in np.linspace(X_INLET,X_CHEEK_END,N_CHEEK):
-        yc,t,w,h,r=duct_shape(x)
-        if x<=X_INLET+LIP_L:
-            d=LIP_T*naca1((x-X_INLET)/LIP_L); w,h,r=W_HL+2*d,H_HL+2*d,R_HL+d
-        else:
-            w,h,r=max(w+2*LIP_T,W_HL+2*LIP_T),max(h+2*LIP_T,H_HL+2*LIP_T),r+LIP_T
-        P=rrect(w,h,r)+[yc,0]
-        out.append(np.c_[np.full(len(P),x),side*P[:,0],P[:,1]])
-    return out
+    # перший переріз трохи менший за кінець заокруглення губи (сходинка ≈0,7 мм) — щоб поверхні не збігались
+    first=_M0*0.975+[YC0,0]; first=np.c_[np.full(len(first),X_INLET-1.0),side*first[:,0],first[:,1]]
+    xs=np.linspace(X_INLET+4,X_DUCT2,N_DUCT)
+    return [first]+[duct_section(x,side) for x in xs]
+def duct_shape(x):
+    s=duct_section(x); return s[:,1].mean(),0,s[:,1].max()-s[:,1].min(),2*s[:,2].max(),0
 # ---------- двигун і відсік ----------
 def engine_profile():
     return [(X_NOZZLE+(xl-9.95)*10,r) for xl,r in ENGINE]
@@ -104,7 +121,7 @@ def bay_profile():
     dome=[(X_CH0,0.5),(X_CH0,R_CH*0.45),(X_CH0+6,R_CH*0.75),(X_CH0+16,R_CH*0.93),(X_CH0+30,R_CH)]
     return dome+[(x_case0,max(R_CH,rmax+gp)),(x_case1+5,rmax+gp),(x_noz,r_noz+gp),(X_EXHAUST,r_noz+gp)]
 if __name__=='__main__':
-    print(f'губа: {W_HL:.1f}×{H_HL:.1f} мм (r{R_HL:.1f}), горло {W_T:.1f}×{H_T:.1f}; y губи {Y_INLET_IN:.1f}–{Y_INLET_IN+W_HL:.1f}')
+    print(f'вхід: y {Y_INLET_IN:.1f}–{Y_INLET_OUT:.1f}, площа {A_MOUTH/100:.1f} см², висота {2*MOUTH[:,1].max():.0f} мм; виїмка від x={notch_box()[0]:.0f}')
     for x in np.r_[X_INLET,X_INLET+L_INLIP,np.linspace(X_INLET+40,X_DUCT2,10)]:
         s=duct_section(x); A=area(s[:,1:])
         gaps=[z_top(x,y)-abs(z) for y,z in s[:,1:] if z_top(x,y)>0]

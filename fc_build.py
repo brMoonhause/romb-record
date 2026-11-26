@@ -16,13 +16,12 @@ def build(docname='ROMB_D5_jet200', structure=True):
     doc=App.newDocument(docname)
     W=Part.makeLoft([_w_open(section_pts(*s)) for s in full_sections()],True,True)
     ducts=[Part.makeLoft([_w_closed(s) for s in duct_sections(sd)],True,False) for sd in (1,-1)]
-    cheeks=[Part.makeLoft([_w_closed(s) for s in cheek_sections(sd)],True,False) for sd in (1,-1)]
+    flares=[Part.makeLoft([_w_closed(s) for s in flare_sections(sd)],True,False) for sd in (1,-1)]
     bay=_rev_x(bay_profile())
-    for d in ducts: W=W.cut(d)
+    x0,x1,y0,y1=notch_box()
+    W=W.cut(_box(x0,x1,y0,y1)).cut(_box(x0,x1,-y1,-y0))
+    for c in flares+ducts: W=W.cut(c)
     W=W.cut(bay)
-    for c in cheeks:
-        for d in ducts: c=c.cut(d)
-        W=W.fuse(c)
     B=W
     yi,ys,ss=Y_ELEV_IN,Y_ELEV_SPLIT,FIN_STRIP
     B=B.cut(_box(X_HINGE,X_HINGE+HINGE_GAP,yi,SPAN_HALF+5)).cut(_box(X_HINGE,X_HINGE+HINGE_GAP,-SPAN_HALF-5,-yi))

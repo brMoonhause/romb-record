@@ -20,13 +20,13 @@ def box(x0,x1,y0,y1,z0=-200,z1=200):
 def build():
     W=Solid.make_loft([wire_open_te(section_pts(*s)) for s in full_sections()],ruled=True)
     ducts=[Solid.make_loft([wire_closed(s) for s in duct_sections(sd)]) for sd in (1,-1)]
-    cheeks=[Solid.make_loft([wire_closed(s) for s in cheek_sections(sd)]) for sd in (1,-1)]
+    flares=[Solid.make_loft([wire_closed(s) for s in flare_sections(sd)]) for sd in (1,-1)]
     bay=revolve_x(bay_profile())
+    x0,x1,y0,y1=notch_box()
+    W=W-box(x0,x1,y0,y1)-box(x0,x1,-y1,-y0)
+    for f in flares: W=W-f
     for d in ducts: W=W-d
     W=W-bay
-    for c in cheeks:
-        for d in ducts: c=c-d
-        W=W+c
     B=W
     parts={}
     yi,ys,ss=Y_ELEV_IN,Y_ELEV_SPLIT,FIN_STRIP
