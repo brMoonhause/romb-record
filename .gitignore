@@ -3,3 +3,4 @@ __pycache__/
 *.FCStd1
 stl_*.stl
 _*.png
+stl/
