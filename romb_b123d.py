@@ -18,7 +18,7 @@ def revolve_x(prof):
 def box(x0,x1,y0,y1,z0=-200,z1=200):
     return Box(x1-x0,y1-y0,z1-z0,align=(Align.MIN,Align.MIN,Align.MIN)).moved(Location((x0,y0,z0)))
 def build():
-    W=Solid.make_loft([wire_open_te(section_pts(*s)) for s in full_sections()],ruled=True)
+    W=Solid.make_loft([wire_open_te(section_pts(s)) for s in full_sections()],ruled=False)
     ducts=[Solid.make_loft([wire_closed(s) for s in duct_sections(sd)]) for sd in (1,-1)]
     flares=[Solid.make_loft([wire_closed(s) for s in flare_sections(sd)]) for sd in (1,-1)]
     bay=revolve_x(bay_profile())

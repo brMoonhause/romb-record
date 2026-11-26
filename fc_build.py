@@ -14,7 +14,7 @@ def _box(x0,x1,y0,y1,z0=-200,z1=200): return Part.makeBox(x1-x0,y1-y0,z1-z0,V(x0
 def build(docname='ROMB_D5_jet200', structure=True):
     if docname in App.listDocuments(): App.closeDocument(docname)
     doc=App.newDocument(docname)
-    W=Part.makeLoft([_w_open(section_pts(*s)) for s in full_sections()],True,True)
+    W=Part.makeLoft([_w_open(section_pts(s)) for s in full_sections()],True,False)
     ducts=[Part.makeLoft([_w_closed(s) for s in duct_sections(sd)],True,False) for sd in (1,-1)]
     flares=[Part.makeLoft([_w_closed(s) for s in flare_sections(sd)],True,False) for sd in (1,-1)]
     bay=_rev_x(bay_profile())

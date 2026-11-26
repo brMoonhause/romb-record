@@ -18,7 +18,9 @@ SECTIONS = [
     (340.0, '0006',     162.0, 778.0),
     (400.0, '0006',     101.0, 829.0),
 ]
-# --- ніша двигуна ---
+# --- згладжування форми ---
+LE_BLEND    = {30.0:14.0, 60.0:10.0, 80.0:10.0, 127.5:22.0}   # напівширина (по y) заокруглення зламів передньої кромки
+N_SPAN      = 26       # перерізів на півкрило для гладкого (не лінійчатого) loft
 # --- відсік двигуна: корпус і крило тягнуться до двигуна, зазор під теплоізоляцію ---
 BAY_GAP     = 5.0      # радіальний зазор двигун — стінка відсіку (керамічний папір + фольга)
 X_EXHAUST   = 1030.0   # канал вихлопу за соплом виходить за задню кромку
@@ -108,29 +110,60 @@ def coords(name,n=81):
 """Геометрія РОМБ D5 як набори точок (без CAD): спільна для build123d і FreeCAD."""
 import numpy as np
 def smooth(t): t=np.clip(t,0,1); return t*t*(3-2*t)
-# ---------- перерізи крила ----------
-def full_sections():
-    return [(-y,f,c,o) for y,f,c,o in SECTIONS[::-1] if y>0]+SECTIONS
-def section_pts(y,foil,c,off,n=None):
-    xs,zs=coords(foil,n or N_PTS); return np.c_[off+c*xs, np.full_like(xs,y), c*zs]
-_ST=[(y,section_pts(y,f,c,o)) for y,f,c,o in SECTIONS]
-def z_top(x,y):
-    """верхня поверхня (лінійчата між станціями, як і loft); 0 поза планформою"""
-    y=abs(y)
-    for (ya,A),(yb,B) in zip(_ST[:-1],_ST[1:]):
-        if ya<=y<=yb:
-            t=(y-ya)/(yb-ya); n=(len(A)+1)//2
-            P=A[:n]*(1-t)+B[:n]*t; xs,zs=P[::-1,0],P[::-1,2]
-            if x<xs[0] or x>xs[-1]: return 0.0
-            return float(np.interp(x,xs,zs))
-    return 0.0
+# ---------- гладка поверхня крила ----------
+# передня кромка — ламана через станції з заокругленими зламами; задня — пряма; товщина між станціями —
+# монотонний кубічний сплайн (PCHIP) по y для кожної точки хорди. Поверхня — гладкий loft через N_SPAN перерізів.
+_XC=0.5*(1-np.cos(np.linspace(0,np.pi,N_PTS)))
+_SY=np.array([s[0] for s in SECTIONS])
+_SH=np.array([half(s[1],_XC)*1.0 for s in SECTIONS])      # напівтовщина / хорда в точках _XC
+def _pchip_slopes(x,y):
+    h=np.diff(x); d=np.diff(y,axis=0)/h[:,None]; m=np.zeros_like(y)
+    for k in range(1,len(x)-1):
+        w1=2*h[k]+h[k-1]; w2=h[k]+2*h[k-1]
+        same=(d[k-1]*d[k])>0
+        m[k]=np.where(same,(w1+w2)/(w1/np.where(same,d[k-1],1)+w2/np.where(same,d[k],1)),0)
+    m[0]=d[0]; m[-1]=d[-1]
+    return m
+_SM=_pchip_slopes(_SY,_SH)
+def _hcol(y):
+    """напівтовщина/хорда в точках _XC на розмаху y (PCHIP)"""
+    y=min(abs(y),_SY[-1]); k=int(np.clip(np.searchsorted(_SY,y)-1,0,len(_SY)-2))
+    h=_SY[k+1]-_SY[k]; t=(y-_SY[k])/h
+    h00=2*t**3-3*t**2+1; h10=t**3-2*t**2+t; h01=-2*t**3+3*t**2; h11=t**3-t**2
+    return h00*_SH[k]+h10*h*_SM[k]+h01*_SH[k+1]+h11*h*_SM[k+1]
 def le_x(y):
-    y=abs(y); ys=[s[0] for s in SECTIONS]; xs=[s[3] for s in SECTIONS]; return float(np.interp(y,ys,xs))
-def te_x(y):
-    y=abs(y); ys=[s[0] for s in SECTIONS]; xs=[s[3]+s[2] for s in SECTIONS]; return float(np.interp(y,ys,xs))
+    """передня кромка: ламана через станції, злами заокруглені квадратичною кривою Безьє"""
+    y=abs(y); P=[(s[0],s[3]) for s in SECTIONS]
+    for i in range(1,len(P)-1):
+        yc,xc=P[i]; b=LE_BLEND.get(yc,0)
+        if b>0 and abs(y-yc)<b:
+            (y0,x0),(y2,x2)=P[i-1],P[i+1]
+            ya,xa=yc-b,xc+(x0-xc)*b/(yc-y0); yb,xb=yc+b,xc+(x2-xc)*b/(y2-yc)
+            # параметр Безьє t по y (квадратне рівняння)
+            A=ya-2*yc+yb; B=2*(yc-ya); C=ya-y
+            t=(-C/B) if abs(A)<1e-9 else (-B+np.sqrt(max(B*B-4*A*C,0)))/(2*A)
+            return float((1-t)**2*xa+2*(1-t)*t*xc+t*t*xb)
+    return float(np.interp(y,[p[0] for p in P],[p[1] for p in P]))
+def te_x(y): return TE_ROOT-abs(y)*np.tan(np.radians(TE_FWD_SWEEP))
+def chord(y): return te_x(y)-le_x(y)
+def span_stations():
+    u=np.linspace(0,1,N_SPAN); ys=SPAN_HALF*(1-np.cos(u*np.pi/2))**1.0   # густіше біля кореня
+    return ys
+def full_sections():
+    ys=span_stations(); return [-y for y in ys[::-1] if y>0]+list(ys)
+def section_pts(y,*_):
+    c=chord(y); le=le_x(y); h=_hcol(y)
+    xs=np.r_[_XC[::-1],_XC[1:]]; zs=np.r_[h[::-1],-h[1:]]
+    return np.c_[le+c*xs, np.full_like(xs,y), c*zs]
+def z_top(x,y):
+    y=abs(y)
+    if y>SPAN_HALF: return 0.0
+    le=le_x(y); c=chord(y); u=(x-le)/c
+    if u<0 or u>1: return 0.0
+    return float(c*np.interp(u,_XC,_hcol(y)))
 def body_le_y(x):
-    """край планформи (передня кромка) як функція x — для розміщення губи"""
-    pts=[(s[3],s[0]) for s in SECTIONS]; return float(np.interp(x,[p[0] for p in pts],[p[1] for p in pts]))
+    ys=np.linspace(0,SPAN_HALF,4001); xs=np.array([le_x(y) for y in ys])
+    return float(np.interp(x,xs,ys))
 # ---------- NACA 1-series (NASA TM X-3324, табл. I; пропущені рядки інтерпольовані) ----------
 _N1=np.array([(0,0),(0.2,4.80),(0.4,6.63),(0.6,8.12),(0.8,9.33),(1,10.38),(1.5,12.72),(2,14.72),
  (4.5,22.96),(5,24.36),(6,27.01),(7,29.47),(8,31.81),(9,34.03),(10,36.13),(11,38.15),(12,40.09),(13,41.94),
@@ -241,7 +274,7 @@ def _box(x0,x1,y0,y1,z0=-200,z1=200): return Part.makeBox(x1-x0,y1-y0,z1-z0,V(x0
 def build(docname='ROMB_D5_jet200', structure=True):
     if docname in App.listDocuments(): App.closeDocument(docname)
     doc=App.newDocument(docname)
-    W=Part.makeLoft([_w_open(section_pts(*s)) for s in full_sections()],True,True)
+    W=Part.makeLoft([_w_open(section_pts(s)) for s in full_sections()],True,False)
     ducts=[Part.makeLoft([_w_closed(s) for s in duct_sections(sd)],True,False) for sd in (1,-1)]
     flares=[Part.makeLoft([_w_closed(s) for s in flare_sections(sd)],True,False) for sd in (1,-1)]
     bay=_rev_x(bay_profile())
