@@ -1,0 +1,116 @@
+# ROMB D5 / jet 200 — параметрична модель для FreeCAD (Macro > Macros... > Execute)
+"""РОМБ D5 / jet 200 — таблиця параметрів (мм). Правиш тут — модель перебудовується."""
+# --- планформа (контрольні лінії) ---
+LE_SWEEP_IN  = 78.0    # град, передня кромка до злому
+X_CRANK      = 600.0   # x злому передньої кромки
+LE_SWEEP_OUT = 40.0    # град, після злому
+TE_ROOT      = 1000.0  # x задньої кромки на осі
+TE_FWD_SWEEP = 10.0    # град, задня кромка стріловидна вперед
+SPAN_HALF    = 400.0
+# --- перерізи: (y, профіль, хорда, зміщення LE)  профілі: BODY, 0016-64, 0012-64, 0009, 0006 ---
+SECTIONS = [
+    (0.0,   'BODY',    1000.0,   0.0),   # повний профіль тіла, ззаду обрізається нішею на X_SLOT
+    (30.0,  'BODY',     926.7,  53.0),   # = BODY-150-T72 хорда 670 / 0.723
+    (60.0,  '0016-64',  707.1, 282.3),   # біля стінки ніші (було y=66)
+    (80.0,  '0016-64',  569.0, 417.0),
+    (127.5, '0012-64',  378.0, 600.0),
+    (200.0, '0009',     304.0, 661.0),
+    (340.0, '0006',     162.0, 778.0),
+    (400.0, '0006',     101.0, 829.0),
+]
+# --- ніша двигуна ---
+X_SLOT      = 778.0    # передня стінка ніші = губа входу jet 200 (тіло продовжене з 723)
+Y_SLOT      = 59.0     # напівширина ніші (корпус Ø109 + 4,5 мм зазор)
+# --- двигун jet 200 (профіль з його моделі Fusion), сопло на X_NOZZLE ---
+X_NOZZLE    = 985.0
+ENGINE = [(-14.15,2),(-11.75,12.5),(-10.75,12.5),(-10.75,42.1),(-9.95,42.1),(-9.6,47),(-9.1,51),
+          (-8.45,53.5),(-3.65,54.5),(2.75,54.5),(4.75,53.5),(5.65,46),(5.8,38),(7.25,36.5),(9.95,27),(9.95,0.5)]
+            # (x у см у системі моделі двигуна, r у мм); зріз сопла x=9.95
+# --- елевони ---
+X_HINGE     = 890.0
+Y_ELEV_IN   = 72.0     # внутрішній край (бокова стінка на y=70)
+Y_ELEV_SPLIT= 200.0
+# --- кілі ---
+FIN_Y       = 200.0
+FIN_ROOT_LE = 765.0
+FIN_ROOT_C  = 200.0
+FIN_TIP_C   = 110.0
+FIN_TIP_DX  = 70.0     # зсув LE на кінці
+FIN_SPAN    = 90.0     # від площини крила (z=0) до кінця; відкрита висота ~80
+FIN_CANT    = 5.0      # град назовні
+FIN_FOIL    = '0005'
+N_PTS       = 81       # точок на поверхню профілю
+"""Профілі: NACA 4-digit і modified 4-digit (00tt-IT), та профіль тіла BODY-150."""
+import numpy as np
+D1={0.2:0.200,0.3:0.234,0.4:0.315,0.5:0.465,0.6:0.700}
+def mod4_half(x,t,I,m):
+    """напівтовщина modified NACA 4-digit (Ladson, NASA TM-4741), хорда 1"""
+    d0=0.002; d1=D1[m]; sm=1-m
+    A=np.array([[sm**2,sm**3],[2*sm,3*sm**2]]); d2,d3=np.linalg.solve(A,[0.1-d0-d1*sm,-d1])
+    fpp=2*d2+6*d3*sm                       # f'' по x у точці m
+    a0=0.296904*I/6
+    M=np.array([[m,m*m,m**3],[1,2*m,3*m*m],[0,2,6*m]])
+    rhs=[0.1-a0*np.sqrt(m),-0.5*a0/np.sqrt(m),fpp+0.25*a0*m**-1.5]
+    a1,a2,a3=np.linalg.solve(M,rhs)
+    x=np.asarray(x,float); y=np.where(x<m,a0*np.sqrt(x)+a1*x+a2*x**2+a3*x**3,
+        d0+d1*(1-x)+d2*(1-x)**2+d3*(1-x)**3)
+    return y*t/0.2
+def naca4_half(x,t):
+    x=np.asarray(x,float)
+    return 5*t*(0.2969*np.sqrt(x)-0.1260*x-0.3516*x**2+0.2843*x**3-0.1015*x**4)
+def body_half(x,t=0.15,I=6,m=0.5,hold=(0.50,0.65)):
+    """BODY-150: mod4 0.15 I=6 T=0.5, плоска ділянка максимальної товщини від 0.50 до 0.65,
+    задня частина стиснута на [0.65,1]"""
+    x=np.asarray(x,float); h0,h1=hold
+    xa=np.where(x<=h0,x,np.where(x<=h1,m,m+(x-h1)*(1-m)/(1-h1)))
+    return mod4_half(xa,t,I,m)
+def half(name,x):
+    if name=='BODY': return body_half(x)
+    if '-' in name:                       # '0016-64'
+        a,b=name.split('-'); return mod4_half(x,int(a[2:])/100,int(b[0]),int(b[1])/10)
+    return naca4_half(x,int(name[2:])/100)
+def coords(name,n=81):
+    """замкнений контур: верх від TE до LE, низ від LE до TE (cos-розподіл)"""
+    b=np.linspace(0,np.pi,n); x=0.5*(1-np.cos(b)); y=half(name,x)
+    xs=np.r_[x[::-1],x[1:]]; ys=np.r_[y[::-1],-y[1:]]
+    return xs,ys
+# ---------------- побудова у FreeCAD ----------------
+import FreeCAD as App, Part
+V=App.Vector
+def _wire(pts):
+    bs=Part.BSplineCurve(); bs.interpolate(pts)
+    return Part.Wire([bs.toShape(), Part.LineSegment(pts[-1],pts[0]).toShape()])
+def section_wire(y,foil,c,off,n=N_PTS):
+    xs,zs=coords(foil,n); return _wire([V(off+c*x,y,c*z) for x,z in zip(xs,zs)])
+def build_oml():
+    secs=[(-y,f,c,o) for y,f,c,o in SECTIONS[::-1] if y>0]+SECTIONS
+    return Part.makeLoft([section_wire(*s) for s in secs],True,True)
+def build_engine():
+    pts=[(X_NOZZLE+(xl-9.95)*10,r) for xl,r in ENGINE]
+    poly=[V(pts[0][0],0,0)]+[V(x,0,r) for x,r in pts]+[V(pts[-1][0],0,0),V(pts[0][0],0,0)]
+    return Part.Face(Part.makePolygon(poly)).revolve(V(0,0,0),V(1,0,0),360)
+def build_fin(side):
+    xs,zs=coords(FIN_FOIL,41)
+    w=lambda z,le,c:_wire([V(le+c*x,FIN_Y*side+c*t,z) for x,t in zip(xs,zs)])
+    s=Part.makeLoft([w(0,FIN_ROOT_LE,FIN_ROOT_C),w(FIN_SPAN,FIN_ROOT_LE+FIN_TIP_DX,FIN_TIP_C)],True,True)
+    s.rotate(V(0,FIN_Y*side,0),V(1,0,0),-FIN_CANT*side); return s
+def build(docname='ROMB_D5_jet200'):
+    if docname in App.listDocuments(): App.closeDocument(docname)
+    doc=App.newDocument(docname)
+    W=build_oml()
+    W=W.cut(Part.makeBox(400,2*Y_SLOT,400,V(X_SLOT,-Y_SLOT,-200)))
+    parts=[]
+    for nm,y0,y1 in (('Elevon_in_R',Y_ELEV_IN,Y_ELEV_SPLIT),('Elevon_out_R',Y_ELEV_SPLIT,SPAN_HALF+5),
+                     ('Elevon_in_L',-Y_ELEV_SPLIT,-Y_ELEV_IN),('Elevon_out_L',-SPAN_HALF-5,-Y_ELEV_SPLIT)):
+        b=Part.makeBox(200,y1-y0,400,V(X_HINGE,y0,-200)); parts.append((nm,W.common(b))); W=W.cut(b)
+    parts=[('Wing',W)]+parts+[('Fin_R',build_fin(1)),('Fin_L',build_fin(-1)),('Engine_jet200',build_engine())]
+    colors={'Wing':(0.72,0.77,0.82),'Elev':(0.89,0.63,0.24),'Fin_':(0.35,0.56,0.82),'Engi':(0.75,0.22,0.17)}
+    for nm,sh in parts:
+        o=doc.addObject('Part::Feature',nm); o.Shape=sh
+        if App.GuiUp: o.ViewObject.ShapeColor=colors[nm[:4]]
+    doc.recompute()
+    if App.GuiUp:
+        import FreeCADGui as Gui; Gui.ActiveDocument.ActiveView.viewIsometric(); Gui.SendMsgToActiveView('ViewFit')
+    for nm,sh in parts: print(f'{nm:14s} V={sh.Volume/1e6:7.3f} л  valid={sh.isValid()}')
+    return doc
+build()
