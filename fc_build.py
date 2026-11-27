@@ -24,12 +24,19 @@ def build(docname='ROMB_D5_jet200', structure=True):
     for c in flares+ducts+[trunk]: W=W.cut(c)
     W=W.cut(bay)
     B=W
-    yi,ys,ss=Y_ELEV_IN,Y_ELEV_SPLIT,FIN_STRIP
-    B=B.cut(_box(X_HINGE,X_HINGE+HINGE_GAP,yi,SPAN_HALF+5)).cut(_box(X_HINGE,X_HINGE+HINGE_GAP,-SPAN_HALF-5,-yi))
-    parts=[]
-    for nm,y0,y1 in (('Elevon_in_R',yi,ys-ss),('Elevon_out_R',ys+ss,SPAN_HALF+5),
-                     ('Elevon_in_L',-ys+ss,-yi),('Elevon_out_L',-SPAN_HALF-5,-ys-ss)):
-        b=_box(X_HINGE+HINGE_GAP,X_HINGE+200,y0,y1); parts.append((nm,B.common(b))); B=B.cut(b)
+    g=HINGE_GAP; parts=[]
+    loft=lambda S:Part.makeLoft([_w_closed(q) for q in S],True,False)
+    for sd,sn in ((1,'R'),(-1,'L')):
+        for nm,y0,y1 in ELEVONS:
+            a,b=sorted((sd*y0,sd*y1))
+            el=B.common(_box(X_HINGE,X_HINGE+200,a,b)).fuse(loft(nose_sections(a,b)))
+            for yh,kind in HINGES:
+                if kind=='finger' and y0<yh<y1:
+                    h=finger_h(yh); el=el.cut(_box(X_HINGE-r_nose(yh)-1,X_HINGE+3.5,sd*yh-1.6,sd*yh+1.6,-h-0.6,h+0.6))
+            for yh,rs,lh in HORNS:
+                if y0<yh<y1: el=el.cut(_box(X_HINGE-r_nose(yh)-1,X_HINGE+1,sd*yh-2,sd*yh+2,-r_nose(yh)-1,0))
+            parts.append((f'Elevon_{nm}_{sn}',el.removeSplitter()))
+            B=B.cut(_box(X_HINGE,X_HINGE+200,a-g,b+g)).cut(loft(nose_sections(a-g-0.3,b+g+0.3,grow=g)))
     parts=[('Body',B)]+parts
     for side,nm in ((1,'Fin_R'),(-1,'Fin_L')):
         xs,zs=coords(FIN_FOIL,41)
@@ -49,17 +56,29 @@ def build(docname='ROMB_D5_jet200', structure=True):
             sp=Part.makeBox(T_PLATE,L,400,V(-t,0,-200)); sp.rotate(V(0,0,0),V(0,0,1),-sd*ang if sd>0 else 0)
             if sd<0: sp=Part.makeBox(T_PLATE,L,400,V(-t,-L,-200)); sp.rotate(V(0,0,0),V(0,0,1),ang)
             sp.translate(V(xa,sd*ya,0)); S.append(('Spar_front_'+n,B.common(sp)))
-            S.append(('Spar_rear_'+n,B.common(_box(REAR_SPAR[0]-t,REAR_SPAR[0]+t,*sorted((sd*REAR_SPAR[1],sd*REAR_SPAR[2]))))))
+            (yra,xra),(yrb,xrb)=REAR_SPAR; ar=math.degrees(math.atan2(xrb-xra,yrb-yra)); Lr=math.hypot(xrb-xra,yrb-yra)
+            if sd>0: rsp=Part.makeBox(T_PLATE,Lr,400,V(-t,0,-200)); rsp.rotate(V(0,0,0),V(0,0,1),-ar)
+            else: rsp=Part.makeBox(T_PLATE,Lr,400,V(-t,-Lr,-200)); rsp.rotate(V(0,0,0),V(0,0,1),ar)
+            rsp.translate(V(xra,sd*yra,0)); S.append(('Spar_rear_'+n,B.common(rsp)))
             for yr in RIBS:
                 xf=xa+(yr-ya)*(xb-xa)/(yb-ya) if yr>=ya else le_x(yr)+35
-                S.append((f'Rib_{int(yr)}_{n}',B.common(_box(xf-2,REAR_SPAR[0],sd*yr-t,sd*yr+t))))
+                S.append((f'Rib_{int(yr)}_{n}',B.common(_box(xf-2,x_rear(yr),sd*yr-t,sd*yr+t))))
             for k,(ysv,xsv) in enumerate(SERVOS):
                 lx,ly,lz=SERVO_BOX; S.append((f'Servo_{k}_{n}',_box(xsv-lx/2,xsv+lx/2,sd*ysv-ly/2,sd*ysv+ly/2,-lz/2,lz/2)))
-            for y0,y1 in ((yi,ys-ss),(ys+ss,SPAN_HALF)):
-                a,b2=sorted((sd*y0,sd*y1))
-                S.append((f'Hinge_{int(y0)}_{n}',Part.makeCylinder(1.0,b2-a,V(X_HINGE+0.5,a,0),V(0,1,0))))
+            for yh,kind in HINGES:
+                y=sd*yh; rp=pin_r(yh)
+                if kind=='end':
+                    S.append((f'Pin_{int(yh)}_{n}',Part.makeCylinder(rp,10,V(X_HINGE,y-5,0),V(0,1,0))))
+                else:
+                    h=finger_h(yh)
+                    S.append((f'Finger_{int(yh)}_{n}',_box(x_rear(yh)+1,X_HINGE+2.5,y-1,y+1,-h,h).cut(Part.makeCylinder(rp+0.05,4,V(X_HINGE,y-2,0),V(0,1,0)))))
+                    S.append((f'Pin_{int(yh)}_{n}',Part.makeCylinder(rp,8,V(X_HINGE,y-4,0),V(0,1,0))))
+            for (yh,rs,lh),(ysv,xsv) in zip(HORNS,SERVOS):
+                y=sd*yh; p0=V(xsv+10,y,-rs); p1=V(X_HINGE-2,y,-lh); d=p1-p0
+                S.append((f'Pushrod_{int(yh)}_{n}',Part.makeCylinder(1.5 if lh>6 else 1.25,d.Length,p0,d)))
+                S.append((f'Hornpin_{int(yh)}_{n}',Part.makeCylinder(1.0,6,V(X_HINGE-2,y-3,-lh),V(0,1,0))))
     col={'Body':(0.72,0.77,0.82),'Elev':(0.89,0.63,0.24),'Fin_':(0.35,0.56,0.82),'Engi':(0.75,0.22,0.17),
-         'Serv':(0.17,0.24,0.31),'Hing':(0.5,0.55,0.55)}
+         'Serv':(0.48,0.36,0.84),'Pin_':(0.6,0.6,0.62),'Fing':(0.6,0.6,0.62),'Push':(0.1,0.1,0.12),'Horn':(0.85,0.34,0.17)}
     grp=doc.addObject('App::DocumentObjectGroup','Structure') if S else None
     for nm,sh in parts+S:
         o=doc.addObject('Part::Feature',nm); o.Shape=sh

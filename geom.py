@@ -166,6 +166,21 @@ def bay_profile():
     xs=[x for x,r in E if r>=rmax-1]; x_case0,x_case1=xs[0],xs[-1]
     x_noz,r_noz=E[-2]; x0=X_FUNNEL-2
     return [(x0,0.5),(x0,rmax+gp),(X_EXHAUST,rmax+gp)]     # прямий циліндр до задньої кромки, без звуження біля сопла
+
+# ---------- елевони: круглий ніс, кругла виїмка, вузли навішування ----------
+ELEVONS=[('in',Y_ELEV_IN,Y_ELEV_SPLIT-FIN_STRIP),('out',Y_ELEV_SPLIT+FIN_STRIP,Y_ELEV_END)]
+def r_nose(y): return float(z_top(X_HINGE,abs(y)))-0.05          # радіус носа = половина товщини на осі
+def x_rear(y):
+    (ya,xa),(yb,xb)=REAR_SPAR; return xa+(abs(y)-ya)*(xb-xa)/(yb-ya)
+def nose_sections(y0,y1,grow=0.0,k=9,n=48):
+    a=np.linspace(0,2*np.pi,n,endpoint=False); out=[]
+    for y in np.linspace(y0,y1,k):
+        R=r_nose(np.clip(abs(y),Y_ELEV_IN,Y_ELEV_END))+grow
+        out.append(np.c_[X_HINGE+R*np.cos(a),np.full(n,y),R*np.sin(a)])
+    return out
+def pin_r(y): return 1.0 if r_nose(y)>=8 else 0.75             # палець Ø2 або Ø1,5
+def finger_h(y): return min(0.55*r_nose(y),5.0)
+
 if __name__=='__main__':
     print(f'вхід: y {Y_INLET_IN:.1f}–{Y_INLET_OUT:.1f}, площа {A_MOUTH/100:.1f} см², висота {2*MOUTH[:,1].max():.0f} мм; виїмка від x={notch_box()[0]:.0f}')
     for x in np.r_[X_INLET,X_INLET+L_INLIP,np.linspace(X_INLET+40,X_DUCT2,10)]:

@@ -31,11 +31,19 @@ def build():
     W=W-bay
     B=W
     parts={}
-    yi,ys,ss=Y_ELEV_IN,Y_ELEV_SPLIT,FIN_STRIP
-    B=B-box(X_HINGE,X_HINGE+HINGE_GAP,yi,SPAN_HALF+5)-box(X_HINGE,X_HINGE+HINGE_GAP,-SPAN_HALF-5,-yi)
-    for nm,y0,y1 in (('elevon_in_R',yi,ys-ss),('elevon_out_R',ys+ss,SPAN_HALF+5),
-                     ('elevon_in_L',-ys+ss,-yi),('elevon_out_L',-SPAN_HALF-5,-ys-ss)):
-        b=box(X_HINGE+HINGE_GAP,X_HINGE+200,y0,y1); parts[nm]=B&b; B=B-b
+    g=HINGE_GAP
+    for sd,sn in ((1,'R'),(-1,'L')):
+        for nm,y0,y1 in ELEVONS:
+            a,b=sorted((sd*y0,sd*y1))
+            el=(B&box(X_HINGE,X_HINGE+200,a,b))+Solid.make_loft([wire_closed(q) for q in nose_sections(a,b)])
+            for yh,kind in HINGES:
+                if kind=='finger' and y0<yh<y1:
+                    h=finger_h(yh); el=el-box(X_HINGE-r_nose(yh)-1,X_HINGE+3.5,sd*yh-1.6,sd*yh+1.6,-h-0.6,h+0.6)
+            for yh,rs,lh in HORNS:
+                if y0<yh<y1: el=el-box(X_HINGE-r_nose(yh)-1,X_HINGE+1,sd*yh-2,sd*yh+2,-r_nose(yh)-1,0)
+            parts[f'elevon_{nm}_{sn}']=el
+            B=B-box(X_HINGE,X_HINGE+200,a-g,b+g)
+            B=B-Solid.make_loft([wire_closed(q) for q in nose_sections(a-g-0.3,b+g+0.3,grow=g)])
     parts['body']=B
     # --- внутрішній набір ---
     t=T_PLATE/2; S={}
@@ -48,15 +56,29 @@ def build():
         sp=Box(T_PLATE,L,400,align=(Align.CENTER,Align.MIN,Align.CENTER)).rotate(Axis.Z,-sd*ang).moved(Location((xa,sd*ya,0)))
         if sd<0: sp=Box(T_PLATE,L,400,align=(Align.CENTER,Align.MAX,Align.CENTER)).rotate(Axis.Z,ang).moved(Location((xa,-ya,0)))
         S['spar_front_'+nm]=B&sp
-        S['spar_rear_'+nm]=B&box(REAR_SPAR[0]-t,REAR_SPAR[0]+t,*(sorted((sd*REAR_SPAR[1],sd*REAR_SPAR[2]))))
+        (yra,xra),(yrb,xrb)=REAR_SPAR; ar=np.degrees(np.arctan2(xrb-xra,yrb-yra)); Lr=np.hypot(xrb-xra,yrb-yra)
+        if sd>0: rs_=Box(T_PLATE,Lr,400,align=(Align.CENTER,Align.MIN,Align.CENTER)).rotate(Axis.Z,-ar).moved(Location((xra,yra,0)))
+        else: rs_=Box(T_PLATE,Lr,400,align=(Align.CENTER,Align.MAX,Align.CENTER)).rotate(Axis.Z,ar).moved(Location((xra,-yra,0)))
+        S['spar_rear_'+nm]=B&rs_
         for yr in RIBS:
             xf=xa+(yr-ya)*(xb-xa)/(yb-ya) if yr>=ya else le_x(yr)+35
-            S[f'rib_{int(yr)}_{nm}']=B&box(xf-2,REAR_SPAR[0],sd*yr-t,sd*yr+t)
+            S[f'rib_{int(yr)}_{nm}']=B&box(xf-2,x_rear(yr),sd*yr-t,sd*yr+t)
         for k,(ysv,xsv) in enumerate(SERVOS):
             lx,ly,lz=SERVO_BOX; S[f'servo_{k}_{nm}']=box(xsv-lx/2,xsv+lx/2,sd*ysv-ly/2,sd*ysv+ly/2,-lz/2,lz/2)
-        for y0,y1 in ((yi,ys-ss),(ys+ss,SPAN_HALF)):
-            a,b2=sorted((sd*y0,sd*y1))
-            S[f'hinge_{int(y0)}_{nm}']=Cylinder(1.0,b2-a,rotation=(90,0,0)).moved(Location((X_HINGE+0.5,(a+b2)/2,0)))
+        for yh,kind in HINGES:
+            y=sd*yh; rp=pin_r(yh)
+            if kind=='end':
+                S[f'pin_{int(yh)}_{nm}']=Cylinder(rp,10,rotation=(90,0,0)).moved(Location((X_HINGE,y,0)))
+            else:
+                h=finger_h(yh)
+                S[f'finger_{int(yh)}_{nm}']=box(x_rear(yh)+1,X_HINGE+2.5,y-1,y+1,-h,h)-Cylinder(rp+0.05,4,rotation=(90,0,0)).moved(Location((X_HINGE,y,0)))
+                S[f'pin_{int(yh)}_{nm}']=Cylinder(rp,8,rotation=(90,0,0)).moved(Location((X_HINGE,y,0)))
+        for (yh,rs,lh),(ysv,xsv) in zip(HORNS,SERVOS):
+            y=sd*yh; p0=Vector(xsv+10,y,-rs); p1=Vector(X_HINGE-2,y,-lh); d=p1-p0
+            rr=1.5 if lh>6 else 1.25
+            S[f'pushrod_{int(yh)}_{nm}']=Cylinder(rr,d.length,align=(Align.CENTER,Align.CENTER,Align.MIN)).moved(Location(p0,(0,np.degrees(np.arctan2(d.X,d.Z)),0)))
+            S[f'hornpin_{int(yh)}_{nm}']=Cylinder(1.0,6,rotation=(90,0,0)).moved(Location((X_HINGE-2,y,-lh)))
+            S[f'servoarm_{int(yh)}_{nm}']=box(xsv+10-1.5,xsv+10+1.5,y+(3 if sd>0 else -5),y+(5 if sd>0 else -3),-rs-1.5,1.5)
     for side,nm in ((1,'fin_R'),(-1,'fin_L')):
         xs,zs=coords(FIN_FOIL,41)
         w=lambda z,le,c:wire_open_te([(le+c*x,FIN_Y*side+c*tt,z) for x,tt in zip(xs,zs)])
