@@ -307,9 +307,8 @@ def _rev_x(prof):
     poly=[V(prof[0][0],0,0)]+[V(x,0,r) for x,r in prof]+[V(prof[-1][0],0,0),V(prof[0][0],0,0)]
     return Part.Face(Part.makePolygon(poly)).revolve(V(0,0,0),V(1,0,0),360)
 def _box(x0,x1,y0,y1,z0=-200,z1=200): return Part.makeBox(x1-x0,y1-y0,z1-z0,V(x0,y0,z0))
-def build(docname='ROMB_D5_jet200', structure=True):
-    if docname in App.listDocuments(): App.closeDocument(docname)
-    doc=App.newDocument(docname)
+def geometry(structure=True):
+    """лише геометрія (без документа) — можна рахувати у фоновому потоці"""
     W=Part.makeLoft([_w_open(section_pts(s)) for s in full_sections()],True,False)
     ducts=[Part.makeLoft([_w_closed(s) for s in duct_sections(sd)],True,False) for sd in (1,-1)]
     flares=[Part.makeLoft([_w_closed(s) for s in flare_sections(sd)],True,False) for sd in (1,-1)]
@@ -373,16 +372,22 @@ def build(docname='ROMB_D5_jet200', structure=True):
                 y=sd*yh; p0=V(xsv+10,y,-rs); p1=V(X_HINGE-2,y,-lh); d=p1-p0
                 S.append((f'Pushrod_{int(yh)}_{n}',Part.makeCylinder(1.5 if lh>6 else 1.25,d.Length,p0,d)))
                 S.append((f'Hornpin_{int(yh)}_{n}',Part.makeCylinder(1.0,6,V(X_HINGE-2,y-3,-lh),V(0,1,0))))
+    return parts,S
+def make_doc(parts,S,docname='ROMB_D5_jet200'):
+    if docname in App.listDocuments(): App.closeDocument(docname)
+    doc=App.newDocument(docname)
     col={'Body':(0.72,0.77,0.82),'Elev':(0.89,0.63,0.24),'Fin_':(0.35,0.56,0.82),'Engi':(0.75,0.22,0.17),
          'Serv':(0.48,0.36,0.84),'Pin_':(0.6,0.6,0.62),'Fing':(0.6,0.6,0.62),'Push':(0.1,0.1,0.12),'Horn':(0.85,0.34,0.17)}
-    grp=doc.addObject('App::DocumentObjectGroup','Structure') if S else None
+    grp=doc.addObject('App::DocumentObjectGroup','Structure') if S else None; sn={n for n,_ in S}
     for nm,sh in parts+S:
         o=doc.addObject('Part::Feature',nm); o.Shape=sh
-        if grp and (nm,sh) in S: grp.addObject(o)
+        if grp and nm in sn: grp.addObject(o)
         if App.GuiUp: o.ViewObject.ShapeColor=col.get(nm[:4],(0.15,0.68,0.38))
     doc.recompute()
     if App.GuiUp:
         import FreeCADGui as Gui; Gui.ActiveDocument.ActiveView.viewIsometric(); Gui.SendMsgToActiveView('ViewFit')
     for nm,sh in parts: print(f'{nm:14s} V={sh.Volume/1e6:7.3f} L valid={sh.isValid()}')
     return doc
+def build(docname='ROMB_D5_jet200', structure=True):
+    parts,S=geometry(structure); return make_doc(parts,S,docname)
 if __name__=='__main__': build()
