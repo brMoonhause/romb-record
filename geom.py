@@ -127,7 +127,7 @@ def duct_area_at(x):
         u=(x-X_INLET)/L_INLIP; k=1-np.sqrt(1-(1-u)**2)
         return A_THROAT+(A_MOUTH-A_THROAT)*k
     u=(x-X_INLET-L_INLIP)/(X_DUCT2-X_INLET-L_INLIP)
-    return A_THROAT+(A_DUCT_END-A_THROAT)*u
+    return A_THROAT+(A_DUCT_END-A_THROAT)*smooth(u)      # плавне розширення: нульовий нахил на кінцях
 _M0=MOUTH-[YC0,0]
 def duct_section(x,side=1):
     yc,t=duct_center(x); A=duct_area_at(x)
