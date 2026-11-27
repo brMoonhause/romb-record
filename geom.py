@@ -165,7 +165,7 @@ def bay_profile():
     E=engine_profile(); rmax=max(r for x,r in E); gp=BAY_GAP
     xs=[x for x,r in E if r>=rmax-1]; x_case0,x_case1=xs[0],xs[-1]
     x_noz,r_noz=E[-2]; x0=X_FUNNEL-2
-    return [(x0,0.5),(x0,rmax+gp),(x_case1+5,rmax+gp),(x_noz,r_noz+gp),(X_EXHAUST,r_noz+gp)]
+    return [(x0,0.5),(x0,rmax+gp),(X_EXHAUST,rmax+gp)]     # прямий циліндр до задньої кромки, без звуження біля сопла
 if __name__=='__main__':
     print(f'вхід: y {Y_INLET_IN:.1f}–{Y_INLET_OUT:.1f}, площа {A_MOUTH/100:.1f} см², висота {2*MOUTH[:,1].max():.0f} мм; виїмка від x={notch_box()[0]:.0f}')
     for x in np.r_[X_INLET,X_INLET+L_INLIP,np.linspace(X_INLET+40,X_DUCT2,10)]:
