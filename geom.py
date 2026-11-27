@@ -119,6 +119,9 @@ def flare_sections(side=1,n=7):
         P=_lens(x,Y_INLET_IN+d,Y_INLET_OUT+(6 if d<0 else 0),d)   # внутрішня губа теж заокруглена
         out.append(np.c_[np.full(len(P),x),side*P[:,0],P[:,1]])
     return out
+_RD=np.sqrt(2*A_DUCT_END/np.pi)                      # радіус D-половинки в точці злиття
+_DEND=dshape(_RD,DUCT_SPLIT); DUCT_Y_END=float(_DEND[:,0].mean())
+_DC=_DEND-[DUCT_Y_END,0]
 def duct_center(x):
     t=smooth((x-X_INLET-L_INLIP)/(X_DUCT2-X_INLET-L_INLIP)); return (1-t)*YC0+t*DUCT_Y_END, t
 def duct_area_at(x):
@@ -130,27 +133,39 @@ def duct_area_at(x):
     return A_THROAT+(A_DUCT_END-A_THROAT)*smooth(u)      # плавне розширення: нульовий нахил на кінцях
 _M0=MOUTH-[YC0,0]
 def duct_section(x,side=1):
+    """рукав: переріз входу плавно переходить у D-половинку з пласкою стінкою на перегородці"""
     yc,t=duct_center(x); A=duct_area_at(x)
-    w,h,r=rr_dims(A_MOUTH,1.0); C=rrect(w,h,r)
-    P=(1-t)*_M0+t*C; P=P*np.sqrt(A/area(P))+[yc,0]
+    P=(1-t)*_M0+t*_DC; P=P*np.sqrt(A/area(P))+[yc,0]
     return np.c_[np.full(len(P),x),side*P[:,0],P[:,1]]
 def duct_sections(side=1):
     # перший переріз трохи менший за кінець заокруглення губи (сходинка ≈0,7 мм) — щоб поверхні не збігались
     first=_M0*0.975+[YC0,0]; first=np.c_[np.full(len(first),X_INLET-1.0),side*first[:,0],first[:,1]]
     xs=np.linspace(X_INLET+4,X_DUCT2,N_DUCT)
-    return [first]+[duct_section(x,side) for x in xs]
+    S=[first]+[duct_section(x,side) for x in xs]
+    last=S[-1].copy(); last[:,0]=X_DUCT2+2; return S+[last]     # 2 мм заходу в трубу
+def trunk_sections(n=72):
+    """злита частина: від овалу, що охоплює дві D-половинки, плавно розширюється до кола раструба"""
+    a=np.linspace(0,2*np.pi,n,endpoint=False); out=[]
+    a0,b0=_RD+DUCT_SPLIT+0.6,_RD+0.6
+    for x in np.linspace(X_DUCT2-1,X_FUNNEL,N_TRUNK):
+        u=smooth((x-X_DUCT2+1)/(X_FUNNEL-X_DUCT2+1))
+        ay=a0+(R_FUNNEL-a0)*u; bz=b0+(R_FUNNEL-b0)*u
+        out.append(np.c_[np.full(n,x),ay*np.cos(a),bz*np.sin(a)])
+    return out
+def trunk_area(x):
+    u=smooth((x-X_DUCT2+1)/(X_FUNNEL-X_DUCT2+1)); a0,b0=_RD+DUCT_SPLIT+0.6,_RD+0.6
+    return np.pi*(a0+(R_FUNNEL-a0)*u)*(b0+(R_FUNNEL-b0)*u)
 def duct_shape(x):
     s=duct_section(x); return s[:,1].mean(),0,s[:,1].max()-s[:,1].min(),2*s[:,2].max(),0
 # ---------- двигун і відсік ----------
 def engine_profile():
     return [(X_NOZZLE+(xl-9.95)*10,r) for xl,r in ENGINE]
 def bay_profile():
-    """камера перед двигуном (обидва канали) + огинаюча двигуна з зазором + канал вихлопу"""
+    """відсік двигуна: огинаюча з теплоізоляційним зазором; спереду починається за 2 мм до зрізу раструба"""
     E=engine_profile(); rmax=max(r for x,r in E); gp=BAY_GAP
     xs=[x for x,r in E if r>=rmax-1]; x_case0,x_case1=xs[0],xs[-1]
-    x_noz,r_noz=E[-2]
-    dome=[(X_CH0,0.5),(X_CH0,R_CH*0.45),(X_CH0+6,R_CH*0.75),(X_CH0+16,R_CH*0.93),(X_CH0+30,R_CH)]
-    return dome+[(x_case0,max(R_CH,rmax+gp)),(x_case1+5,rmax+gp),(x_noz,r_noz+gp),(X_EXHAUST,r_noz+gp)]
+    x_noz,r_noz=E[-2]; x0=X_FUNNEL-2
+    return [(x0,0.5),(x0,rmax+gp),(x_case1+5,rmax+gp),(x_noz,r_noz+gp),(X_EXHAUST,r_noz+gp)]
 if __name__=='__main__':
     print(f'вхід: y {Y_INLET_IN:.1f}–{Y_INLET_OUT:.1f}, площа {A_MOUTH/100:.1f} см², висота {2*MOUTH[:,1].max():.0f} мм; виїмка від x={notch_box()[0]:.0f}')
     for x in np.r_[X_INLET,X_INLET+L_INLIP,np.linspace(X_INLET+40,X_DUCT2,10)]:

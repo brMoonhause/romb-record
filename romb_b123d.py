@@ -21,11 +21,13 @@ def build():
     W=Solid.make_loft([wire_open_te(section_pts(s)) for s in full_sections()],ruled=False)
     ducts=[Solid.make_loft([wire_closed(s) for s in duct_sections(sd)]) for sd in (1,-1)]
     flares=[Solid.make_loft([wire_closed(s) for s in flare_sections(sd)]) for sd in (1,-1)]
+    trunk=Solid.make_loft([wire_closed(s) for s in trunk_sections()])
     bay=revolve_x(bay_profile())
     x0,x1,y0,y1=notch_box()
     W=W-box(x0,x1,y0,y1)-box(x0,x1,-y1,-y0)
     for f in flares: W=W-f
     for d in ducts: W=W-d
+    W=W-trunk
     W=W-bay
     B=W
     parts={}

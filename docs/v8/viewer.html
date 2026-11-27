@@ -1,0 +1,215 @@
+<title>РОМБ D5 · v8</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap">
+<style>
+/* Layout: креслярський стіл — великий 3D-вікно зліва, вузька панель шарів і цифр справа; нижче — варіанти входів сіткою карток */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#18212b; --muted:#5b6876; --line:#d3dae2;
+  --accent:#d9562b; --air:#2f7fd6; --air2:#36b3c9; --struct:#a8743a;
+  --font-display:"Unbounded","IBM Plex Sans",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --scene:#e4e9ef;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --panel:#161d25; --ink:#e3e9ef; --muted:#8d9aa8; --line:#26313c;
+  --accent:#ff7a4a; --air:#4c9cf0; --air2:#4fd0e3; --struct:#c99456; --scene:#0b1015; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#161d25; --ink:#e3e9ef; --muted:#8d9aa8; --line:#26313c;
+  --accent:#ff7a4a; --air:#4c9cf0; --air2:#4fd0e3; --struct:#c99456; --scene:#0b1015; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:28px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 20px}
+h1{font-family:var(--font-display);font-weight:700;font-size:26px;margin:0;letter-spacing:.01em}
+h2{font-family:var(--font-display);font-weight:500;font-size:18px;margin:0;text-wrap:balance}
+h3{font-size:15px;font-weight:600;margin:0}
+.sub{color:var(--muted);font-family:var(--font-mono);font-size:13px}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
+@media (max-width:860px){.stage{grid-template-columns:minmax(0,1fr)}}
+.view{position:relative;background:var(--scene);border:1px solid var(--line);border-radius:6px;overflow:hidden;aspect-ratio:16/10;max-width:100%;min-height:320px}
+.view canvas{display:block;width:100%;height:100%;touch-action:none}
+.load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:var(--font-mono);font-size:13px}
+.presets{position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap}
+.presets button,.seg button{font:500 12px var(--font-mono);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:5px 9px;cursor:pointer}
+.presets button:hover,.seg button:hover{border-color:var(--accent)}
+.presets button:focus-visible,.seg button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{position:absolute;right:10px;bottom:8px;font:12px var(--font-mono);color:var(--muted)}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:18px;min-width:0}
+.layers{display:flex;flex-direction:column;gap:6px}
+.layer{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px}
+.layer input{accent-color:var(--accent);width:16px;height:16px}
+.sw{width:12px;height:12px;border-radius:2px;flex:none}
+.lbl{font:500 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.slider{display:flex;flex-direction:column;gap:4px}
+.slider input{width:100%;accent-color:var(--accent)}
+.slider .row{display:flex;justify-content:space-between;font:12px var(--font-mono);color:var(--muted)}
+dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:4px 12px;margin:0;font-size:13px}
+dt{color:var(--muted)} dd{margin:0;font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right}
+.ok{color:#2f9a5a}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.chart .svgbox{overflow-x:auto}
+.chart svg{display:block;width:100%;min-width:520px;height:auto}
+.chart p,.intro{margin:0;color:var(--muted);max-width:70ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card.rec{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.card svg{width:100%;height:auto;max-width:100%;display:block}
+.tag{align-self:flex-start;font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}
+.card.rec .tag{color:var(--accent);border-color:var(--accent)}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px}
+.pc ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px}
+.pc .h{font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.plus .h{color:#2f9a5a} .minus .h{color:var(--accent)}
+.score{display:flex;gap:12px;flex-wrap:wrap;font:12px var(--font-mono);color:var(--muted)}
+.score b{color:var(--ink);font-weight:500}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>РОМБ D5 · v8</h1>
+    <span class="sub">jet 200 · 21 кгс · 0,43 кг/с повітря · Y-канал: два входи зливаються в одну трубу з раструбом перед двигуном</span>
+  </header>
+
+  <section class="stage">
+    <div class="view" id="view">
+      <div class="load" id="load">завантаження геометрії…</div>
+      <div class="presets">
+        <button id="pIso" type="button">ізо</button>
+        <button id="pTop" type="button">зверху</button>
+        <button id="pSide" type="button">збоку</button>
+        <button id="pFront" type="button">спереду</button>
+        <button id="pDuct" type="button">канал</button>
+      </div>
+      <div class="hint">обертати · масштаб колесом · зсув правою</div>
+    </div>
+    <aside>
+      <div class="layers" id="layers"><span class="lbl">Шари</span></div>
+      <div class="slider">
+        <span class="lbl">Прозорість корпусу</span>
+        <input id="op" type="range" min="0" max="100" value="16">
+        <div class="row"><span>скло</span><span id="opv">16 %</span><span>суцільний</span></div>
+      </div>
+      <div class="slider">
+        <span class="lbl">Поперечний розріз по x</span>
+        <input id="cut" type="range" min="0" max="1040" value="1040">
+        <div class="row"><span>ніс</span><span id="cutv">вимкнено</span><span>сопло</span></div>
+      </div>
+      <div>
+        <span class="lbl">Y-канал</span>
+        <dl style="margin-top:8px">
+          <dt>Входи, губа</dt><dd>x 480 · 2 × 14,3 см²</dd>
+          <dt>Горло рукава</dt><dd>13,0 см² · x 505</dd>
+          <dt>Вигин рукава</dt><dd>183 мм · зміщ. 62 мм</dd>
+          <dt>Зміщення / довжина</dt><dd>0,34</dd>
+          <dt>R вигину / D</dt><dd>1,7</dd>
+          <dt>Півкут, рукав</dt><dd class="ok">3,2°</dd>
+          <dt>Злиття</dt><dd>x 688 · 2 × 23 см²</dd>
+          <dt>Злита труба</dt><dd>85 мм ≈ 1,1 D</dd>
+          <dt>Півкут, труба</dt><dd class="ok">3,1°</dd>
+          <dt>Зріз раструба</dt><dd>Ø85 · x 773</dd>
+          <dt>Вхід двигуна</dt><dd>Ø84 · x 778</dd>
+        </dl>
+      </div>
+    </aside>
+  </section>
+
+  <section class="chart">
+    <h2>Закон площі Y-каналу</h2>
+    <p>До x 688 показано суму площ обох рукавів, далі площу злитої труби. Від губ потік трохи стискається до горл (M ≈ 0,45 на стоянці), потім рукави плавно розширюються, змикаються D-половинками на перегородці й переходять в одну трубу. Злита частина має довжину 85 мм (≈1,1 діаметра) і плавно розходиться до раструба Ø85 перед кільцем двигуна Ø84. Найбільший півкут розширення 3,2°, нижче межі відриву ~3,5°. Сходинка на x 688 відповідає кінцю 2-міліметрової перегородки.</p>
+    <div class="svgbox"><svg id="area" viewBox="0 0 720 240" role="img" aria-label="Сумарна площа перерізу Y-каналу від входів x 480 до раструба x 773"></svg></div>
+  </section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+/* ---------- графік площі ---------- */
+const AREA=[[480,28.6],[492,26.41],[503,26.01],[515,26.16],[526,26.74],[538,27.7],[549,28.95],[561,30.46],[572,32.15],[584,33.96],[596,35.85],[607,37.73],[619,39.56],[630,41.28],[642,42.82],[653,44.12],[665,45.12],[676,45.77],[688,46.0],[688,48.67],[700,49.16],[712,50.31],[724,51.86],[737,53.56],[749,55.13],[761,56.29],[773,56.75]];
+(function(){
+  const s=document.getElementById('area'),L=56,R=700,T=16,B=200;
+  const X=x=>L+(x-480)/(780-480)*(R-L), Y=a=>B-(a-20)/(60-20)*(B-T);
+  let g='';
+  for(let a=20;a<=60;a+=10){g+=`<line x1="${L}" x2="${R}" y1="${Y(a)}" y2="${Y(a)}" stroke="var(--line)"/><text x="${L-8}" y="${Y(a)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${a}</text>`}
+  for(let x=480;x<=780;x+=60){g+=`<text x="${X(x)}" y="${B+18}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${x}</text>`}
+  const d=AREA.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+  g+=`<path d="${d} L${X(773)} ${B} L${X(480)} ${B} Z" fill="var(--air)" opacity=".12"/>`;
+  g+=`<path d="${d}" fill="none" stroke="var(--air)" stroke-width="2.2"/>`;
+  g+=`<line x1="${X(688)}" x2="${X(688)}" y1="${T}" y2="${B}" stroke="var(--air2)" stroke-dasharray="4 4"/><text x="${X(688)+5}" y="${B-8}" font-size="11" fill="var(--air2)" font-family="IBM Plex Mono,monospace">злиття x 688</text>`;
+  [[480,28.6,'входи'],[505,26.0,'горла'],[773,56.75,'раструб']].forEach(([x,a,t])=>{g+=`<circle cx="${X(x)}" cy="${Y(a)}" r="4" fill="var(--accent)"/><text x="${X(x)+(x>700?-6:6)}" y="${Y(a)-8}" text-anchor="${x>700?'end':'start'}" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono,monospace">${t} ${String(a).replace('.',',')}</text>`});
+  g+=`<text x="${L}" y="${T-4}" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">см²</text><text x="${R}" y="${B+34}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">x, мм</text>`;
+  s.innerHTML=g;
+})();
+
+/* ---------- 3D ---------- */
+const view=document.getElementById('view');
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.localClippingEnabled=true;
+view.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(32,1,5,20000); cam.up.set(0,0,1);
+const ctl=new THREE.OrbitControls(cam,renderer.domElement); ctl.enableDamping=true; ctl.target.set(600,0,0);
+scene.add(new THREE.HemisphereLight(0xffffff,0x445566,0.85));
+const dl=new THREE.DirectionalLight(0xffffff,0.75); dl.position.set(-600,-900,1400); scene.add(dl);
+const dl2=new THREE.DirectionalLight(0xffffff,0.3); dl2.position.set(900,700,-600); scene.add(dl2);
+const clip=new THREE.Plane(new THREE.Vector3(-1,0,0),1040);
+const LAY=[
+ ['body','Корпус','#9aa7b4',true],
+ ['ducts','Y-канал','var(--air)',true],
+ ['chamber','Відсік двигуна','var(--air2)',true],
+ ['engine','Двигун jet 200','var(--accent)',true],
+ ['structure','Набір: кіль, рами, лонжерони','var(--struct)',false],
+ ['servos','Сервоприводи','#7b5bd6',true],
+ ['elevons','Елевони','#e0a03c',true],
+ ['fins','Кілі','#5f8fd0',true],
+];
+const mats={}, meshes={};
+function col(v){const c=v.startsWith('var(')?css(v.slice(4,-1)):v;return new THREE.Color(c)}
+function mkMat(k,c){
+  const base={color:col(c),clippingPlanes:[clip],side:THREE.DoubleSide};
+  if(k==='body') return new THREE.MeshStandardMaterial({...base,transparent:true,opacity:.16,depthWrite:false,roughness:.35,metalness:.05});
+  if(k==='ducts') return new THREE.MeshStandardMaterial({...base,transparent:true,opacity:.85,roughness:.4});
+  if(k==='chamber') return new THREE.MeshStandardMaterial({...base,transparent:true,opacity:.45,depthWrite:false,roughness:.4});
+  if(k==='engine') return new THREE.MeshStandardMaterial({...base,roughness:.35,metalness:.6});
+  if(k==='elevons'||k==='fins') return new THREE.MeshStandardMaterial({...base,transparent:true,opacity:.35,depthWrite:false,roughness:.4});
+  return new THREE.MeshStandardMaterial({...base,roughness:.6});
+}
+const layersEl=document.getElementById('layers');
+LAY.forEach(([k,name,c,on])=>{
+  const id='ly_'+k, lab=document.createElement('label'); lab.className='layer';
+  lab.innerHTML=`<input type="checkbox" id="${id}" ${on?'checked':''}><span class="sw" style="background:${c}"></span>${name}`;
+  layersEl.appendChild(lab);
+  lab.querySelector('input').addEventListener('change',e=>{if(meshes[k])meshes[k].visible=e.target.checked});
+});
+function b64(s,T){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new T(u.buffer)}
+fetch('mesh.json').then(r=>r.json()).then(M=>{
+  LAY.forEach(([k,,c],ord)=>{
+    const d=M[k]; if(!d) return;
+    const q=b64(d.v,Uint16Array), idx=b64(d.i,Uint32Array), pos=new Float32Array(q.length);
+    for(let i=0;i<q.length;i++) pos[i]=d.lo[i%3]+q[i]*d.sc;
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setIndex(new THREE.BufferAttribute(idx,1)); g.computeVertexNormals();
+    const m=new THREE.Mesh(g,mats[k]=mkMat(k,c)); m.visible=document.getElementById('ly_'+k).checked; m.renderOrder=k==='body'?10:(k==='chamber'?5:ord); meshes[k]=m; scene.add(m);
+    if(k==='body'){const e=new THREE.LineSegments(new THREE.EdgesGeometry(g,35),new THREE.LineBasicMaterial({color:col('var(--muted)'),transparent:true,opacity:.35,clippingPlanes:[clip]}));m.add(e)}
+  });
+  document.getElementById('load').hidden=true;
+}).catch(()=>{document.getElementById('load').textContent='не вдалося завантажити геометрію'});
+const P={iso:[[-420,-1050,700],[560,0,0]],top:[[500,0,2300],[500,0,0]],side:[[560,-2100,0],[560,0,0]],front:[[-1900,0,120],[560,0,0]],duct:[[260,-700,480],[640,20,0]]};
+function go(p){const [a,b]=P[p];cam.position.set(...a);ctl.target.set(...b);if(p==='top')cam.up.set(-1,0,0);else cam.up.set(0,0,1);ctl.update()}
+['Iso','Top','Side','Front','Duct'].forEach(n=>document.getElementById('p'+n).onclick=()=>go(n.toLowerCase()));
+go('iso');
+const op=document.getElementById('op');
+op.oninput=()=>{const v=op.value/100;document.getElementById('opv').textContent=op.value+' %';if(mats.body){mats.body.opacity=v;mats.body.depthWrite=v>.9;mats.body.needsUpdate=true}};
+const cut=document.getElementById('cut');
+cut.oninput=()=>{const v=+cut.value;clip.constant=v;document.getElementById('cutv').textContent=v>=1040?'вимкнено':'x = '+v+' мм'};
+function size(){const r=view.getBoundingClientRect();renderer.setSize(r.width,r.height,false);cam.aspect=r.width/r.height;cam.updateProjectionMatrix()}
+new ResizeObserver(size).observe(view); size();
+(function loop(){requestAnimationFrame(loop);ctl.update();renderer.render(scene,cam)})();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{LAY.forEach(([k,,c])=>{if(mats[k])mats[k].color=col(c)})});
+})();
+</script>

@@ -17,10 +17,11 @@ def build(docname='ROMB_D5_jet200', structure=True):
     W=Part.makeLoft([_w_open(section_pts(s)) for s in full_sections()],True,False)
     ducts=[Part.makeLoft([_w_closed(s) for s in duct_sections(sd)],True,False) for sd in (1,-1)]
     flares=[Part.makeLoft([_w_closed(s) for s in flare_sections(sd)],True,False) for sd in (1,-1)]
+    trunk=Part.makeLoft([_w_closed(s) for s in trunk_sections()],True,False)
     bay=_rev_x(bay_profile())
     x0,x1,y0,y1=notch_box()
     W=W.cut(_box(x0,x1,y0,y1)).cut(_box(x0,x1,-y1,-y0))
-    for c in flares+ducts: W=W.cut(c)
+    for c in flares+ducts+[trunk]: W=W.cut(c)
     W=W.cut(bay)
     B=W
     yi,ys,ss=Y_ELEV_IN,Y_ELEV_SPLIT,FIN_STRIP
